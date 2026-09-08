@@ -1,35 +1,35 @@
 DEBUG = false
 
-SESSION_COOKIE_SAMESITE="Lax"
+SESSION_COOKIE_SAMESITE = "Lax"
 
 # Security
 # ========
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY = "CHANGE_ME_GENERATE_WITH_python_secrets_token_hex_32"
 
-SECRET_KEY = "my_very_secret_key"
+## Enable when serving over HTTPS (required for production)
+SESSION_COOKIE_SECURE  = true
+REMEMBER_COOKIE_SECURE = true
 
-## If you serve your app over https, set these cookie-parameters to true
-# SESSION_COOKIE_SECURE = true
-# REMEMBER_COOKIE_SECURE = true
+# Authentication — Keycloak SSO via oauth2-proxy + RemoteUserHandler
+# ==================================================================
+# Built-in email/password login is disabled; all authentication is
+# handled by Keycloak (OIDC) through the oauth2-proxy sidecar.
+# oauth2-proxy validates tokens and injects user headers; ASReview's
+# RemoteUserHandler reads those headers to identify (and auto-create)
+# user accounts on first login.
+#
+# ALLOW_ACCOUNT_CREATION must NOT be set to true when REMOTE_USER is active.
 
+[REMOTE_USER]
+# Header set by oauth2-proxy containing the authenticated Keycloak user's email.
+# Because the value is an email address (contains @), RemoteUserHandler uses it
+# as both the unique identifier and the account email automatically.
+USER_IDENTIFIER_HEADER = "X-Auth-Request-User"
 
-# Authentication
-# ==============
+# Full display name from the Keycloak "name" claim.
+USER_NAME_HEADER  = "X-Auth-Request-Name"
 
-## enable authentication, enabled by default since asreview version 1.6+
-# LOGIN_DISABLED = false
-
-ALLOW_ACCOUNT_CREATION = true
-SECURITY_PASSWORD_SALT = "abCDefGH"
-# EMAIL_VERIFICATION = true
-
-
-# Email server
-# ============
-
-# MAIL_SERVER = "smtp.sendgrid.net"
-# MAIL_PORT = 465
-# MAIL_USE_TLS = false
-# MAIL_USE_SSL = true
-# MAIL_USERNAME = "apikey"
-# MAIL_PASSWORD="password"
-# MAIL_DEFAULT_SENDER = "no_reply@example.org"
+# Email (explicit — redundant when the identifier is already an email,
+# but makes intent clear and allows future decoupling).
+USER_EMAIL_HEADER = "X-Auth-Request-Email"

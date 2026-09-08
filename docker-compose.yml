@@ -28,15 +28,20 @@ services:
       - ASREVIEW_LAB_API_URL=/
       - ASREVIEW_LAB_CONFIG_PATH=/app/asreview_config.toml
       - ASREVIEW_LAB_SQLALCHEMY_DATABASE_URI=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
-    # Not published to the host: nginx reaches this container over the internal
+    # Not exposed externally; oauth2-proxy and nginx reach this over the internal
     # Docker network (asreview:5006). Bound to localhost only for debugging.
     ports:
       - 127.0.0.1:${BACKEND_EXTERNAL_PORT}:5006
-    entrypoint: []
-    command: >
-      bash -c "asreview auth-tool create-db
-      && (asreview task-manager
-      & gunicorn -w ${WORKERS} -b \"0.0.0.0:5006\" \"asreview.webapp.app:create_app()\")"
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+    restart: always
+    depends_on:
+      - asreview
+    volumes:
+      - ./oauth2-proxy.cfg:/etc/oauth2-proxy.cfg:ro
+    command: --config /etc/oauth2-proxy.cfg
+    # Internal only; nginx routes authenticated traffic through it
 
   server:
     image: nginx:1.27
@@ -46,6 +51,7 @@ services:
     volumes:
       - ./asreview.conf:/etc/nginx/nginx.conf
     depends_on:
+      - oauth2-proxy
       - asreview
 
 volumes:

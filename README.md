@@ -266,6 +266,95 @@ verified before they deliver messages; the provider's documentation describes ho
 After changing the configuration, restart the containers for the changes to take
 effect.
 
+## Keycloak SSO (OIDC)
+
+Instead of the built-in email/password system, Review Suite can delegate all
+authentication to an existing **Keycloak** server via the OpenID Connect (OIDC)
+protocol. A lightweight **oauth2-proxy** sidecar sits between NGINX and the
+application: it validates Keycloak sessions and injects the authenticated user's
+identity as HTTP headers, which the application reads directly — no changes to
+the application code are required.
+
+```
+Browser → NGINX → oauth2-proxy ←→ Keycloak (OIDC)
+                      ↓ (X-Auth-Request-* headers)
+                    ASReview (RemoteUserHandler)
+```
+
+### 1. Create the Keycloak client
+
+In your Keycloak admin console, go to **Realm → Clients → Import client** and
+import the file [`keycloak-client.json`](keycloak-client.json) included in this
+repository. Before importing, replace `YOUR_DOMAIN` with the public URL of the
+deployment (e.g. `https://review.example.org`). Then:
+
+1. Open the newly created `asreview` client.
+2. Go to **Credentials** and copy the **Client secret**.
+
+### 2. Edit `oauth2-proxy.cfg`
+
+Replace every placeholder in [`oauth2-proxy.cfg`](oauth2-proxy.cfg):
+
+| Placeholder | Value |
+|---|---|
+| `YOUR_KEYCLOAK_URL` | Base URL of your Keycloak server (e.g. `https://sso.example.org`) |
+| `YOUR_REALM` | Keycloak realm name |
+| `YOUR_DOMAIN` | Public URL of the Review Suite deployment |
+| `CHANGE_ME` (client-secret) | Client secret copied in step 1 |
+| `CHANGE_ME_RANDOM_32_BYTES_BASE64` | Random 32-byte key: `openssl rand -base64 32` |
+
+### 3. Edit `asreview_config.toml`
+
+Replace the `SECRET_KEY` placeholder:
+
+```
+SECRET_KEY = "..."   # python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+The `[REMOTE_USER]` section is already configured to read the headers that
+oauth2-proxy injects. Do **not** set `ALLOW_ACCOUNT_CREATION = true` — user
+accounts are created automatically on first Keycloak login.
+
+### 4. Start the stack
+
+```
+docker compose up -d
+```
+
+The stack now has **four containers**: PostgreSQL, ASReview, oauth2-proxy, and
+NGINX. NGINX serves static assets directly (cached, no auth required) and routes
+all other traffic through oauth2-proxy.
+
+### How login works
+
+1. A user visits the site. NGINX forwards the request to oauth2-proxy.
+2. oauth2-proxy checks for a valid session cookie. If absent, it redirects the
+   browser to Keycloak.
+3. Keycloak authenticates the user (using whatever methods are configured in the
+   realm: password, institution SSO, MFA, etc.).
+4. Keycloak redirects back to `/oauth2/callback`. oauth2-proxy exchanges the
+   authorization code for tokens, sets a session cookie, and redirects to the
+   original URL.
+5. On the next request, oauth2-proxy validates the session and injects
+   `X-Auth-Request-User` (email), `X-Auth-Request-Name` (display name), and
+   `X-Auth-Request-Email` into the proxied request.
+6. ASReview's `RemoteUserHandler` reads those headers, looks up or creates the
+   user account keyed by email, and logs the user in via Flask-Login.
+
+### Sign-out
+
+To sign out of both Review Suite and Keycloak, the user should visit
+`/oauth2/sign_out`. To redirect back to the application after sign-out, configure
+`post_logout_redirect_uri` in Keycloak (already included in the client JSON).
+
+### HTTPS
+
+For a production deployment, use `asreview_https.conf` instead of
+`asreview.conf`. The HTTPS config adds TLS termination and HTTP → HTTPS redirect;
+see [Upgrading security: migrate to HTTPS](#upgrading-security-migrate-to-https).
+The oauth2-proxy cookie is already set with `cookie-secure = true`, which
+requires HTTPS.
+
 ## Upgrading security: migrate to HTTPS
 
 This section assumes that the steps in the preceding sections have been completed and that the application runs correctly over plain HTTP.
@@ -372,13 +461,16 @@ The application is now served over HTTPS and can be reached at `https://<domain 
 
 ### How it works
 
-ASReview Server Stack runs the application as three Docker containers,
-orchestrated by [Docker Compose](https://docs.docker.com/compose/):
+ASReview Server Stack runs the application as Docker containers orchestrated by
+[Docker Compose](https://docs.docker.com/compose/):
 
 - a **PostgreSQL** database;
 - the **ASReview** application, served by [Gunicorn](https://gunicorn.org/) as a
   WSGI server;
-- an **NGINX** container acting as a reverse proxy in front of the application.
+- an **oauth2-proxy** container that validates Keycloak OIDC sessions and injects
+  user-identity headers before forwarding requests to ASReview;
+- an **NGINX** container acting as a reverse proxy in front of the application
+  (handles TLS, static-asset caching, and routes traffic through oauth2-proxy).
 
 This mirrors a common, robust setup for a Flask application like ASReview LAB;
 see the Flask documentation on [Deploying to
@@ -395,6 +487,8 @@ The following files in the repository configure the deployment:
   options, secret key, email server settings, and so on).
 - `asreview.conf` — the NGINX configuration used for plain HTTP.
 - `asreview_https.conf` — the NGINX configuration used for HTTPS.
+- `oauth2-proxy.cfg` — oauth2-proxy configuration for Keycloak OIDC SSO.
+- `keycloak-client.json` — Keycloak client definition (import into your realm).
 
 ### Parameters in the .env file
 

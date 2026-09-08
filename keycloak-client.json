@@ -1,0 +1,64 @@
+{
+  "_comment": "Import this file in Keycloak: Realm → Clients → Import client.",
+  "_comment2": "Replace YOUR_DOMAIN with the public URL of your Review Suite deployment.",
+
+  "clientId": "asreview",
+  "name": "Review Suite",
+  "description": "Review Suite — ASReview collaborative screening platform",
+  "enabled": true,
+  "clientAuthenticatorType": "client-secret",
+  "protocol": "openid-connect",
+  "publicClient": false,
+  "standardFlowEnabled": true,
+  "implicitFlowEnabled": false,
+  "directAccessGrantsEnabled": false,
+  "serviceAccountsEnabled": false,
+  "redirectUris": [
+    "https://YOUR_DOMAIN/oauth2/callback"
+  ],
+  "webOrigins": [
+    "https://YOUR_DOMAIN"
+  ],
+  "attributes": {
+    "post.logout.redirect.uris": "https://YOUR_DOMAIN/"
+  },
+  "protocolMappers": [
+    {
+      "name": "email",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "email",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "email",
+        "userinfo.token.claim": "true"
+      }
+    },
+    {
+      "name": "full name",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-full-name-mapper",
+      "consentRequired": false,
+      "config": {
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "userinfo.token.claim": "true"
+      }
+    },
+    {
+      "name": "preferred_username",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "username",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "preferred_username",
+        "userinfo.token.claim": "true"
+      }
+    }
+  ]
+}

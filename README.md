@@ -134,11 +134,11 @@ distributions.
 
 ### 1. Get the code
 
-Clone this repository onto the server and enter the created directory:
+Clone the Review Suite repository (with all submodules) onto the server and enter the deployment directory:
 
 ```
-$ git clone https://github.com/asreview/asreview-server-stack.git
-$ cd asreview-server-stack
+$ git clone --recursive https://github.com/eevidal/reviewsuite-lab.git
+$ cd reviewsuite-lab/deploy/server-stack
 ```
 
 All remaining commands are run from this directory.
@@ -456,6 +456,143 @@ $ docker compose down
 $ docker compose up -d
 ```
 The application is now served over HTTPS and can be reached at `https://<domain name>`.
+
+---
+
+## Alternative: Deploying without Docker (Bare-Metal with Systemd)
+
+If your institution restricts or does not permit Docker containers, you can deploy Review Suite directly on the server's Linux operating system using a standard Python virtual environment, native PostgreSQL, `systemd`, and NGINX.
+
+### 1. Install System Dependencies
+On Ubuntu / Debian systems, install the required packages:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip libpq-dev postgresql postgresql-contrib nginx git
+```
+
+### 2. Configure PostgreSQL
+Create a dedicated PostgreSQL user and database for Review Suite:
+
+```bash
+# Set your preferred database password below:
+sudo -u postgres psql -c "CREATE USER asreview WITH PASSWORD 'change_this_password';"
+sudo -u postgres psql -c "CREATE DATABASE asreview_db OWNER asreview;"
+```
+
+### 3. Clone and Install Review Suite
+Set up a designated directory (e.g., `/opt/reviewsuite`), create an isolated Python virtual environment, and install Review Suite:
+
+```bash
+sudo mkdir -p /opt/reviewsuite
+sudo chown -R $USER:$USER /opt/reviewsuite
+
+# Clone the repository
+git clone --recursive https://github.com/eevidal/reviewsuite-lab.git /opt/reviewsuite
+cd /opt/reviewsuite
+
+# Create virtual environment and install dependencies
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install psycopg2-binary gunicorn .
+```
+
+### 4. Create the Configuration File
+Generate a cryptographically secure key:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Create `/opt/reviewsuite/asreview_config.toml`:
+```toml
+DEBUG = false
+SECRET_KEY = "<PASTE_YOUR_GENERATED_SECRET_KEY_HERE>"
+SESSION_COOKIE_SAMESITE = "Lax"
+
+# Set to true if NGINX terminates HTTPS:
+SESSION_COOKIE_SECURE = false
+REMEMBER_COOKIE_SECURE = false
+
+# Enable native account registration (if not using external SSO):
+ALLOW_ACCOUNT_CREATION = true
+```
+
+### 5. Create Systemd Service
+Create the service unit `/etc/systemd/system/reviewsuite.service`:
+
+```ini
+[Unit]
+Description=Review Suite Application Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/reviewsuite
+Environment="PATH=/opt/reviewsuite/venv/bin"
+Environment="ASREVIEW_LAB_CONFIG_PATH=/opt/reviewsuite/asreview_config.toml"
+Environment="ASREVIEW_LAB_SQLALCHEMY_DATABASE_URI=postgresql+psycopg2://asreview:change_this_password@localhost:5432/asreview_db"
+Environment="ASREVIEW_PATH=/var/lib/reviewsuite/projects"
+ExecStart=/opt/reviewsuite/venv/bin/asreview lab --host 127.0.0.1 --port 5006
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Prepare folder permissions, reload systemd, and start the service:
+```bash
+sudo mkdir -p /var/lib/reviewsuite/projects
+sudo chown -R www-data:www-data /var/lib/reviewsuite /opt/reviewsuite
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now reviewsuite
+sudo systemctl status reviewsuite
+```
+
+### 6. Configure NGINX Reverse Proxy
+Create `/etc/nginx/sites-available/reviewsuite`:
+
+```nginx
+server {
+    listen 80;
+    server_name review.your-institute.edu; # or server IP address
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://127.0.0.1:5006;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support for model status & progress streaming
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Enable the site and reload NGINX:
+```bash
+sudo ln -s /etc/nginx/sites-available/reviewsuite /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 7. Inviting Collaborators in Bare-Metal
+Team collaboration works identically:
+1. The project owner goes to the project's **Team** tab and clicks **"Generate Invitation Link"**.
+2. Review Suite generates a signed invitation URL using `SECRET_KEY` and the server's public hostname.
+3. Collaborators click the link, register or sign in, and click **"Join Project"**.
+
+---
 
 ## Reference
 

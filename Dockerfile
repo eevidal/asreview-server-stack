@@ -2,12 +2,23 @@
 FROM python:3.11-slim AS builder
 WORKDIR /app
 
-# Install asreview and its server dependencies from PyPI
+# Install Review Suite and its server dependencies
 RUN apt-get update \
-    && pip install --upgrade pip \
-    && pip3 install --user --no-cache-dir \
-        "asreview>=3,<4" \
-        gunicorn
+    && apt-get install -y --no-install-recommends git build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --upgrade pip
+
+# Copy source if building with repository root context
+COPY . /app/src
+
+# If pyproject.toml is in /app/src, install local source; otherwise clone and install from GitHub
+RUN if [ -f /app/src/pyproject.toml ]; then \
+        echo "Building from local Review Suite repository..." && \
+        pip3 install --user --no-cache-dir gunicorn /app/src; \
+    else \
+        echo "Installing Review Suite from GitHub repository..." && \
+        pip3 install --user --no-cache-dir gunicorn git+https://github.com/eevidal/reviewsuite-lab.git; \
+    fi
         
 # Second stage
 FROM python:3.11-slim

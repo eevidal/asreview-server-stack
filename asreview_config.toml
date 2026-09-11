@@ -21,6 +21,59 @@ REMEMBER_COOKIE_SECURE = true
 #
 # ALLOW_ACCOUNT_CREATION must NOT be set to true when REMOTE_USER is active.
 
+# ---------------------------------------------------------------------
+# Google Drive (optional) — lets each researcher connect their own Drive
+# from the profile page and have the library's PDFs stored there instead
+# of on this server. The browser uploads straight to Google: the PDF
+# bytes never reach this machine, only the resulting file ID is recorded.
+#
+# Create an OAuth 2.0 "Web application" client in Google Cloud Console
+# with the `drive.file` scope, and set the authorized redirect URI to the
+# GOOGLE_DRIVE_REDIRECT_URI value below. Leave these unset to disable the
+# integration (the profile card then reports it as not configured).
+# ---------------------------------------------------------------------
+# GOOGLE_DRIVE_CLIENT_ID = "<client-id>.apps.googleusercontent.com"
+# GOOGLE_DRIVE_CLIENT_SECRET = "<client-secret>"
+# GOOGLE_DRIVE_REDIRECT_URI = "https://review.your-institute.edu/auth/drive/callback"
+
+# How much disk each project may use for PDFs, in MB. This is a cache,
+# not a library: permanent copies belong in each researcher's own Drive,
+# and these megabytes only hold what is in transit —
+#   * a PDF one member lent another until it is picked up,
+#   * an Open Access download waiting for a browser to push it to Drive,
+#   * the full text of somebody who has not connected a Drive yet, which
+#     expires after 30 days (they are warned in the interface).
+# When the budget is spent the server refuses the next file instead of
+# deleting someone's only copy to make room.
+#
+# Unset means no limit (the historical single-machine behaviour).
+# 0 means not a single PDF byte is written to disk: every full text must
+# live in a connected Drive, and the paths that would store one are off.
+PDF_CACHE_MAX_MB = 100
+
+# ---------------------------------------------------------------------
+# Nextcloud (optional) — the team's own file server as the home for a
+# project's full texts. Review Suite keeps one folder per project under
+# a service account and shares it with the project's members, so a PDF
+# one person contributes is simply there for the others: no lending, and
+# nothing parked in the cache above.
+#
+# NEXTCLOUD_SERVICE_PASSWORD should be an *app password* generated for
+# the service account (Settings -> Security), never the account's own
+# password: it can be revoked on its own if it leaks.
+#
+# Leave unset to disable; every Nextcloud path stays inert.
+# ---------------------------------------------------------------------
+# NEXTCLOUD_URL = "https://nube.tu-institucion.edu"
+# NEXTCLOUD_SERVICE_USER = "reviewsuite"
+# NEXTCLOUD_SERVICE_PASSWORD = "<app-password>"
+# NEXTCLOUD_ROOT_FOLDER = "ReviewSuite"
+
+# How a Review Suite account maps to a Nextcloud username, for sharing.
+# "email" (default) uses the part before the @; "identifier" uses the
+# login identifier instead. Check which one matches your directory.
+# NEXTCLOUD_USERNAME_FROM = "email"
+
 [REMOTE_USER]
 # Header set by oauth2-proxy containing the authenticated Keycloak user's email.
 # Because the value is an email address (contains @), RemoteUserHandler uses it
